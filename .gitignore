@@ -105,3 +105,8 @@ ENV/
 
 # results
 results/
+
+# training dataset
+data/
+
+ResNet56512

@@ -10,110 +10,9 @@ import torchvision
 import torchvision.transforms as transforms
 import argparse
 import torchvision.datasets as datasets
-parser = argparse.ArgumentParser(description='Experiments of "A Walk with SGD"')
 
-# Directories
-parser.add_argument('--data', type=str, default='/default/data',
-                    help='location of the data corpus')
-parser.add_argument('--model_dir', type=str, default='',
-                    help='')
-parser.add_argument('--save_dir', type=str, default='',
-                    help='')
-# Hyperparams
-parser.add_argument('--seed', type=int, default=1111,
-                    help='random seed')
-parser.add_argument('--bs', type=int, default=100, metavar='N',
-                    help='batch size')
-parser.add_argument('--mbs', type=int, default=100, metavar='N',
-                    help='minibatch size')
-# Meta arguments: Tracking, resumability, CUDA
-parser.add_argument('--dataset', type=str, default='cifar10',
-                    help='dataset name (cifar10)')
-parser.add_argument('--datasize', type=int, default=45000,
-                    help='dataset size')
-parser.add_argument('--arch', type=str, default='resnet',
-                    help='arch name (resnet, vgg11)')
-parser.add_argument('--cuda', action='store_false',
-                    help='use CUDA')
-parser.add_argument('--epoch_index', type=str, default='1',
-                    help='resume experiment ')
-parser.add_argument('--num_batches', type=int, default=450,
-                    help='number of batches per epoch')
-parser.add_argument('--mode', type=str, default='sgd',
-                    help='mode name (sgd, gd)')
-
-
-
-
-args = parser.parse_args()
-
-criterion = nn.CrossEntropyLoss()
-criterion_nll = nn.NLLLoss()
-
-
-print('==> Preparing data..')
-if args.dataset == 'cifar10':
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-
-    train_sampler = torch.utils.data.sampler.SubsetRandomSampler(range(args.datasize))
-    valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(range(45000, 50000))
-    trainset = torchvision.datasets.CIFAR10(root=args.data, train=True, download=True, transform=transform_train)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.mbs,  # shuffle=True, num_workers=2)
-                                              sampler=train_sampler, num_workers=2)
-    validloader = torch.utils.data.DataLoader(trainset, batch_size=args.mbs,  # shuffle=True, num_workers=2)
-                                              sampler=valid_sampler, num_workers=2)
-    testset = torchvision.datasets.CIFAR10(root=args.data, train=False, download=False, transform=transform_test)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=args.mbs, shuffle=False, num_workers=2)
-
-    classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-    nb_classes = len(classes)
-elif args.dataset == 'mnist':
-
-    trans = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
-    train_set = torchvision.datasets.MNIST(root=args.data, train=True, transform=trans, download=True)
-
-    train_sampler = torch.utils.data.sampler.SubsetRandomSampler(range(args.datasize))
-    valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(range(50000, 60000))
-
-    test_set = torchvision.datasets.MNIST(root=args.data, train=False, transform=trans)
-
-    trainloader = torch.utils.data.DataLoader(train_set, batch_size=args.mbs,  # shuffle=True, num_workers=2)
-                                              sampler=train_sampler, num_workers=2)
-    trainloader_variance = torch.utils.data.DataLoader(train_set, batch_size=50,  # shuffle=True, num_workers=2)
-                                                       sampler=train_sampler, num_workers=2)
-    validloader = torch.utils.data.DataLoader(train_set, batch_size=args.mbs,  # shuffle=True, num_workers=2)
-                                              sampler=valid_sampler, num_workers=2)
-    testloader = torch.utils.data.DataLoader(test_set, batch_size=args.mbs, shuffle=False, num_workers=2)
-
-    nb_classes = 10
-elif args.dataset == 'imagnet':
-    # Data loading code
-    transform = transforms.Compose([
-        transforms.RandomCrop(64),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
-    ])
-
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
-    train = datasets.ImageFolder(traindir, transform)
-    val = datasets.ImageFolder(valdir, transform)
-    trainloader = torch.utils.data.DataLoader(
-        train, batch_size=args.mbs, shuffle=True, num_workers=2)
-    validloader = torch.utils.data.DataLoader(
-        val, batch_size=args.mbs, shuffle=True, num_workers=2)
+from dataloader import get_data_loaders
+import resnet_models
 
 def test(epoch, model, loader):
     model.train()
@@ -183,12 +82,9 @@ def iteratively_interpolate_model_gd(dir,save_dir):
             pkl.dump(train_acc_list, f)
 
 def interpolate_between_2models(model1,model2,train_loss_list,train_acc_list,epoch):
-    if args.arch == 'resnet':
-        model = ResNet56()
-    elif args.arch == 'vgg11':
-        model = vgg11()
-    elif args.arch == 'MLP':
-        model = MLPNet()
+    model_to_call = getattr(resnet_models, args.arch)
+    model = model_to_call()
+
     model.cuda()
     model1.eval()
     model2.eval()
@@ -209,12 +105,61 @@ def interpolate_between_2models(model1,model2,train_loss_list,train_acc_list,epo
         train_acc_list.append(train_acc)
         epoch+=1
     return epoch
-save_dir=args.model_dir+'/interpolation_'+str(args.epoch_index)+'/'
-if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
-if args.mode=='sgd':
-    iteratively_interpolate_model(args.model_dir, args.save_dir)
-else:
-    iteratively_interpolate_model_gd(args.model_dir, args.save_dir)
+
+###############################################################################
+# Main function
+###############################################################################
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Experiments of "A Walk with SGD"')
+
+    # Directories
+    parser.add_argument('--data', type=str, default='./data',
+                        help='location of the data corpus')
+    parser.add_argument('--model_dir', type=str, default='./resnet56128/',
+                        help='')
+    parser.add_argument('--save_dir', type=str, default='./resnet56128/interpo',
+                        help='')
+    # Hyperparams
+    parser.add_argument('--seed', type=int, default=0,
+                        help='random seed')
+    parser.add_argument('--batch_size', type=int, default=128, metavar='N',
+                        help='batch size')
+    parser.add_argument('--mbs', type=int, default=128, metavar='N',
+                        help='minibatch size')
+    # Meta arguments: Tracking, resumability, CUDA
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        help='dataset name (cifar10)')
+
+    parser.add_argument('--arch', type=str, default='ResNet56',
+                        help='arch name (resnet, vgg11)')
+
+    parser.add_argument('--epoch_index', type=str, default='1',
+                        help='resume experiment ')
+    parser.add_argument('--num_batches', type=int, default=391,
+                        help='number of batches per epoch')
+    parser.add_argument('--mode', type=str, default='sgd',
+                        help='mode name (sgd, gd)')
+
+
+
+
+    args = parser.parse_args()
+
+    criterion = nn.CrossEntropyLoss()
+    criterion_nll = nn.NLLLoss()
+
+
+    print('==> Preparing data..')
+
+    trainloader, testloader, _ = get_data_loaders(args)
+
+
+    save_dir=args.model_dir+'/interpolation_'+str(args.epoch_index)+'/'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    if args.mode=='sgd':
+        iteratively_interpolate_model(args.model_dir, args.save_dir)
+    else:
+        iteratively_interpolate_model_gd(args.model_dir, args.save_dir)
 
 
